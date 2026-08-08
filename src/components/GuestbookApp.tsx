@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import type { EntryData } from "@/lib/types";
 import EntryForm from "./EntryForm";
 import EntryCard from "./EntryCard";
@@ -62,9 +63,9 @@ export default function GuestbookApp() {
             </button>
           </div>
         ) : (
-          <a href="/admin" className="text-sm text-pink-600 hover:text-pink-700 hover:underline">
+          <Link href="/admin" className="text-sm text-pink-600 hover:text-pink-700 hover:underline">
             관리자 로그인
-          </a>
+          </Link>
         )}
       </header>
 

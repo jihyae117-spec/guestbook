@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -67,9 +68,9 @@ export default function AdminLoginPage() {
           {submitting ? "로그인 중..." : "로그인"}
         </button>
       </form>
-      <a href="/" className="block text-center text-sm text-pink-600 hover:text-pink-700 hover:underline">
+      <Link href="/" className="block text-center text-sm text-pink-600 hover:text-pink-700 hover:underline">
         방명록으로 돌아가기
-      </a>
+      </Link>
     </div>
   );
 }
