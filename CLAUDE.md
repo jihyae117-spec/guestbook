@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 프로젝트 개요
 
-비밀번호 기반으로 누구나 이름/별명으로 글을 남기고, 답글을 달고, 본인 글만 수정·삭제할 수 있는 방명록 웹앱. Next.js(App Router) 풀스택 + Prisma/SQLite 구성이며 회원가입/로그인 없이 글마다 설정한 비밀번호로 본인 확인을 한다. 요구사항 정의는 `docs/requirements.md`, API 스펙 전체는 `docs/api.md`에 있음 — 라우트를 수정하면 두 문서도 함께 갱신할 것.
+비밀번호 기반으로 누구나 이름/별명으로 글을 남기고, 답글을 달고, 본인 글만 수정·삭제할 수 있는 방명록 웹앱. Next.js(App Router) 풀스택 + Prisma/PostgreSQL 구성이며 회원가입/로그인 없이 글마다 설정한 비밀번호로 본인 확인을 한다. Vercel에 서버리스로 배포하므로 DB는 Postgres(Vercel Postgres/Neon 등)를 쓴다 — SQLite는 서버리스 파일시스템 제약(읽기 전용, 인스턴스 간 파일 미공유) 때문에 쓸 수 없다. 요구사항 정의는 `docs/requirements.md`, API 스펙 전체는 `docs/api.md`에 있음 — 라우트를 수정하면 두 문서도 함께 갱신할 것.
 
 ## 자주 쓰는 명령어
 
@@ -13,9 +13,11 @@ npm run dev              # 개발 서버 (http://localhost:3000)
 npm run build             # 프로덕션 빌드
 npm run lint               # eslint .
 npx tsc --noEmit           # 타입 체크 (별도 test 스크립트 없음, 이것이 사실상의 검증 수단)
-npm run prisma:migrate     # 스키마 변경 후 마이그레이션 생성/적용 (prisma migrate dev)
+npm run prisma:migrate     # 스키마 변경 후 마이그레이션 생성/적용 (prisma migrate dev, DATABASE_URL 필요)
 npm run prisma:seed        # .env의 ADMIN_USERNAME/ADMIN_PASSWORD로 관리자 계정 생성/갱신
 ```
+
+`npm run build`는 `prisma migrate deploy && next build`로 구성되어 있어 빌드 시(Vercel 배포 포함) 대기 중인 마이그레이션을 실제 Postgres DB에 자동 적용한다. 즉 `DATABASE_URL`이 없으면 로컬에서도 `npm run dev`/`npm run build`가 동작하지 않는다 — 로컬 개발도 실제 Postgres(예: 배포에 쓰는 것과 동일한 Neon DB)에 연결해서 진행한다.
 
 자동화된 테스트 스위트는 없다. 변경 후에는 `npx tsc --noEmit`과 관련 API를 직접 호출(curl/Invoke-WebRequest 등)해 검증하는 방식으로 확인해왔다.
 
@@ -41,9 +43,11 @@ npm run prisma:seed        # .env의 ADMIN_USERNAME/ADMIN_PASSWORD로 관리자 
 
 ### 요청 제한 (인메모리, 단일 인스턴스 가정)
 
-`src/lib/rateLimit.ts`가 두 가지 독립된 정책을 제공하며 재시작 시 초기화되는 `Map` 기반 저장소를 쓴다 (다중 인스턴스로 확장 시 Redis 등 외부 저장소 필요):
+`src/lib/rateLimit.ts`가 두 가지 독립된 정책을 제공하며 재시작 시 초기화되는 `Map` 기반 저장소를 쓴다:
 - `checkPostRateLimit`: 글/답글 작성 시 IP당 10초 쿨다운 + 분당 5회.
 - `isPasswordLocked` / `recordPasswordFailure` / `resetPasswordFailures`: 글·답글·관리자 로그인 각각에서 "대상+IP" 키로 5분 내 5회 실패 시 5분 잠금.
+
+**Vercel 서버리스 환경에서의 한계**: 이 Map은 하나의 웜(warm) 람다 인스턴스 메모리 안에서만 유지된다. 서로 다른 인스턴스로 요청이 분산되면 제한이 인스턴스별로 따로 적용되어 전역적으로는 느슨해질 수 있다. 기능은 정상 동작하지만 스팸 방지 강도가 로컬/단일 서버 환경보다 약해질 수 있음을 감안할 것 — 더 엄격한 보장이 필요하면 Vercel KV/Upstash Redis 같은 외부 저장소로 교체해야 한다.
 
 ### 라우트 구조 (App Router)
 
@@ -59,9 +63,10 @@ npm run prisma:seed        # .env의 ADMIN_USERNAME/ADMIN_PASSWORD로 관리자 
 
 | 변수 | 용도 |
 |---|---|
-| `DATABASE_URL` | SQLite 파일 경로 (`file:./prisma/dev.db`) |
+| `DATABASE_URL` | Postgres 연결 문자열 (커넥션 풀러 사용 시 풀링된 URL) |
+| `DIRECT_URL` | 마이그레이션용 direct(non-pooling) Postgres 연결 문자열. 풀러를 안 쓰면 `DATABASE_URL`과 같은 값이어도 됨 |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `npm run prisma:seed` 실행 시 관리자 계정 생성/갱신에 사용 |
 | `SESSION_SECRET` | 관리자 세션 토큰 서명 키 |
 | `CAPTCHA_SECRET` | 캡차 토큰 서명 키 |
 
-스키마를 바꾸면 `npm run prisma:migrate` 실행 후 필요 시 `npm run prisma:seed`로 관리자 계정을 다시 만든다.
+스키마를 바꾸면 `npm run prisma:migrate` 실행 후 필요 시 `npm run prisma:seed`로 관리자 계정을 다시 만든다. Vercel에 배포할 때는 프로젝트 Settings → Environment Variables에 위 변수를 모두 등록해야 하며(특히 `DATABASE_URL`/`DIRECT_URL`), 등록돼 있어야 빌드 시 `prisma migrate deploy`가 성공한다.
