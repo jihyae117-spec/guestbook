@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 프로젝트 개요
 
-비밀번호 기반으로 누구나 이름/별명으로 글을 남기고, 답글을 달고, 본인 글만 수정·삭제할 수 있는 방명록 웹앱. Next.js(App Router) 풀스택 + Prisma/PostgreSQL 구성이며 회원가입/로그인 없이 글마다 설정한 비밀번호로 본인 확인을 한다. Vercel에 서버리스로 배포하므로 DB는 Postgres(Vercel Postgres/Neon 등)를 쓴다 — SQLite는 서버리스 파일시스템 제약(읽기 전용, 인스턴스 간 파일 미공유) 때문에 쓸 수 없다. 요구사항 정의는 `docs/requirements.md`, API 스펙 전체는 `docs/api.md`에 있음 — 라우트를 수정하면 두 문서도 함께 갱신할 것.
+비밀번호 기반으로 누구나 이름/별명으로 글을 남기고, 답글을 달고, 본인 글만 수정·삭제할 수 있는 방명록 웹앱. Next.js(App Router) 풀스택 + Prisma/PostgreSQL 구성이며 회원가입/로그인 없이 글마다 설정한 비밀번호로 본인 확인을 한다. Vercel에 서버리스로 배포하므로 DB는 Postgres(Supabase)를 쓴다 — SQLite는 서버리스 파일시스템 제약(읽기 전용, 인스턴스 간 파일 미공유) 때문에 쓸 수 없다. Supabase의 direct 연결(`db.<ref>.supabase.co:5432`)은 IPv6 전용이라 이 환경에서는 접속이 안 돼서, `DIRECT_URL`도 Session Pooler(`aws-0-<region>.pooler.supabase.com:5432`, IPv4)를 쓴다. `DATABASE_URL`은 Transaction Pooler(포트 6543, `pgbouncer=true`)를 쓴다. 요구사항 정의는 `docs/requirements.md`, API 스펙 전체는 `docs/api.md`에 있음 — 라우트를 수정하면 두 문서도 함께 갱신할 것.
 
 ## 자주 쓰는 명령어
 
@@ -17,7 +17,7 @@ npm run prisma:migrate     # 스키마 변경 후 마이그레이션 생성/적�
 npm run prisma:seed        # .env의 ADMIN_USERNAME/ADMIN_PASSWORD로 관리자 계정 생성/갱신
 ```
 
-`npm run build`는 `prisma migrate deploy && next build`로 구성되어 있어 빌드 시(Vercel 배포 포함) 대기 중인 마이그레이션을 실제 Postgres DB에 자동 적용한다. 즉 `DATABASE_URL`이 없으면 로컬에서도 `npm run dev`/`npm run build`가 동작하지 않는다 — 로컬 개발도 실제 Postgres(예: 배포에 쓰는 것과 동일한 Neon DB)에 연결해서 진행한다.
+`npm run build`는 `prisma migrate deploy && next build`로 구성되어 있어 빌드 시(Vercel 배포 포함) 대기 중인 마이그레이션을 실제 Postgres DB에 자동 적용한다. 즉 `DATABASE_URL`이 없으면 로컬에서도 `npm run dev`/`npm run build`가 동작하지 않는다 — 로컬 개발도 배포에 쓰는 것과 동일한 Supabase DB에 연결해서 진행한다.
 
 자동화된 테스트 스위트는 없다. 변경 후에는 `npx tsc --noEmit`과 관련 API를 직접 호출(curl/Invoke-WebRequest 등)해 검증하는 방식으로 확인해왔다.
 
@@ -64,7 +64,7 @@ npm run prisma:seed        # .env의 ADMIN_USERNAME/ADMIN_PASSWORD로 관리자 
 | 변수 | 용도 |
 |---|---|
 | `DATABASE_URL` | Postgres 연결 문자열 (커넥션 풀러 사용 시 풀링된 URL) |
-| `DIRECT_URL` | 마이그레이션용 direct(non-pooling) Postgres 연결 문자열. 풀러를 안 쓰면 `DATABASE_URL`과 같은 값이어도 됨 |
+| `DIRECT_URL` | 마이그레이션용 Postgres 연결 문자열. Supabase는 true direct(5432)가 IPv6 전용이라 Session Pooler(5432, IPv4)를 사용 |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `npm run prisma:seed` 실행 시 관리자 계정 생성/갱신에 사용 |
 | `SESSION_SECRET` | 관리자 세션 토큰 서명 키 |
 | `CAPTCHA_SECRET` | 캡차 토큰 서명 키 |
